@@ -57,6 +57,36 @@ const REALTIME_ALERTS = [
 export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Gemini Diagnostic states
+  const [geminiStatus, setGeminiStatus] = useState<any>(null);
+  const [isGeminiDiagnosticModalOpen, setIsGeminiDiagnosticModalOpen] = useState(false);
+  const [isDiagnosticRunning, setIsDiagnosticRunning] = useState(false);
+
+  const runGeminiDiagnostic = async () => {
+    setIsDiagnosticRunning(true);
+    try {
+      const res = await fetch("/api/gemini-diagnostic");
+      if (res.ok) {
+        const data = await res.json();
+        setGeminiStatus(data);
+      } else {
+        setGeminiStatus({
+          success: false,
+          status: "server_error",
+          reason: `The diagnostics endpoint returned an HTTP error status: ${res.status}.`
+        });
+      }
+    } catch (e: any) {
+      setGeminiStatus({
+        success: false,
+        status: "network_error",
+        reason: `Failed to connect to the diagnostics endpoint: ${e?.message || e}`
+      });
+    } finally {
+      setIsDiagnosticRunning(false);
+    }
+  };
   const [showFullNav, setShowFullNav] = useState(true);
 
   // Full-stack AI News states
@@ -167,7 +197,43 @@ export default function App() {
   const [sidebarTab, setSidebarTab] = useState<'outlook' | 'radar' | 'voice' | 'chat' | 'workspace'>('chat');
 
   // --- Full-Stack Firebase States ---
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    if (typeof window !== "undefined" && localStorage.getItem('aix-sandbox-mode') === 'true') {
+      try {
+        const savedUser = localStorage.getItem('aix-sandbox-user');
+        return savedUser ? JSON.parse(savedUser) : {
+          uid: "sandbox-guest",
+          email: "sandbox@aix.local",
+          displayName: "Sandbox Explorer",
+          isAnonymous: true
+        };
+      } catch (_) {
+        return {
+          uid: "sandbox-guest",
+          email: "sandbox@aix.local",
+          displayName: "Sandbox Explorer",
+          isAnonymous: true
+        };
+      }
+    }
+    return null;
+  });
+
+  const enableSandboxMode = (displayName?: string) => {
+    const sandboxUser = {
+      uid: "sandbox-guest-" + Math.random().toString(36).substring(2, 9),
+      email: "sandbox@aix.local",
+      displayName: displayName || "Sandbox Explorer",
+      isAnonymous: true
+    };
+    localStorage.setItem('aix-sandbox-mode', 'true');
+    localStorage.setItem('aix-sandbox-user', JSON.stringify(sandboxUser));
+    setCurrentUser(sandboxUser);
+    setIsAuthModalOpen(false);
+    setAuthError(null);
+    setToast("Entered local offline Sandbox Mode!");
+  };
+
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -191,6 +257,7 @@ export default function App() {
   const [speculationLoading, setSpeculationLoading] = useState(false);
 
   const saveUserDataToFirestore = async (updatedFields: { bookmarks?: string[], followedCategories?: string[], notes?: Record<string, string>, viewedTabs?: Record<string, string[]>, readArticles?: string[] }) => {
+    if (localStorage.getItem('aix-sandbox-mode') === 'true') return;
     if (!auth.currentUser) return;
     try {
       const userDocRef = doc(db, `users/${auth.currentUser.uid}/preferences/userData`);
@@ -246,8 +313,18 @@ export default function App() {
 
   // Auth subscription & global mounting triggers
   useEffect(() => {
+    if (localStorage.getItem('aix-sandbox-mode') === 'true') {
+      const sandboxChat = localStorage.getItem('aix-sandbox-chat');
+      if (sandboxChat) {
+        setChatHistory(JSON.parse(sandboxChat));
+      }
+      fetchSavedBriefings("sandbox-guest");
+    }
     fetchSpeculations();
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (localStorage.getItem('aix-sandbox-mode') === 'true') {
+        return;
+      }
       setCurrentUser(user);
       if (user) {
         await fetchUserData(user.uid);
@@ -266,9 +343,18 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Trigger Gemini diagnostic on load
+  useEffect(() => {
+    runGeminiDiagnostic();
+  }, []);
+
   // Save chat to Firestore on changes
   useEffect(() => {
     if (!currentUser) return;
+    if (localStorage.getItem('aix-sandbox-mode') === 'true') {
+      localStorage.setItem('aix-sandbox-chat', JSON.stringify(chatHistory));
+      return;
+    }
     const saveChat = async () => {
       try {
         const userDocRef = doc(db, `users/${currentUser.uid}/preferences/chat`);
@@ -314,20 +400,40 @@ export default function App() {
         friendlyMessage = "Email/Password sign-in is disabled in your Firebase console. Please go to your Firebase Console under Authentication -> Sign-in method and enable the Email/Password provider.";
       } else if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
         friendlyMessage = (
-          <div className="space-y-2 text-left">
-            <p className="font-bold text-rose-300">Firebase Error: Unauthorized Domain</p>
+          <div className="space-y-3 text-left">
+            <p className="font-bold text-rose-300">Firebase Error: Unauthorized Domain (Blocked by 2SV)</p>
             <p className="text-[11px] leading-relaxed text-neutral-300">
-              Your deployed Vercel domain is not authorized in your Firebase project. To fix this:
+              If you can't access Firebase Console to authorize this domain (due to Two-Step Verification or other blocks), you can bypass Firebase entirely:
             </p>
-            <ol className="list-decimal pl-4 text-[10px] space-y-1 text-neutral-400 font-sans">
-              <li>Open your <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">Firebase Console</a></li>
-              <li>Go to <strong className="text-neutral-200">Authentication</strong> &rarr; <strong className="text-neutral-200">Settings</strong> tab</li>
-              <li>Under <strong className="text-neutral-200">Authorized domains</strong>, click <strong className="text-neutral-200">Add domain</strong></li>
-              <li>Add: <code className="bg-neutral-900 px-1 py-0.5 rounded text-rose-300 font-mono text-[10px] select-all border border-neutral-800">{window.location.hostname}</code></li>
-            </ol>
-            <p className="text-[10px] text-neutral-400 mt-1">
-              Once added, refresh your browser tab and try signing up/in again!
-            </p>
+            <button
+              type="button"
+              onClick={() => enableSandboxMode(authEmail ? authEmail.split('@')[0] : "Sandbox Explorer")}
+              className="w-full py-2.5 px-4 rounded-xl bg-[#5194ec] hover:bg-blue-500 text-neutral-950 font-bold text-xs uppercase tracking-wide cursor-pointer text-center block transition-all"
+            >
+              🚀 Bypass & Enter via Local Sandbox Mode
+            </button>
+            <div className="pt-2 border-t border-neutral-900">
+              <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider mb-1">To connect Firebase instead:</p>
+              <ol className="list-decimal pl-4 text-[10px] space-y-1 text-neutral-400 font-sans">
+                <li>Open your <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">Firebase Console</a></li>
+                <li>Go to <strong className="text-neutral-200">Authentication</strong> &rarr; <strong className="text-neutral-200">Settings</strong> tab</li>
+                <li>Under <strong className="text-neutral-200">Authorized domains</strong>, click <strong className="text-neutral-200">Add domain</strong></li>
+                <li>Add: <code className="bg-neutral-900 px-1 py-0.5 rounded text-rose-300 font-mono text-[10px] select-all border border-neutral-800">{window.location.hostname}</code></li>
+              </ol>
+            </div>
+          </div>
+        );
+      } else {
+        friendlyMessage = (
+          <div className="space-y-3 text-left">
+            <p className="text-neutral-300">{err.message || "An error occurred during authentication."}</p>
+            <button
+              type="button"
+              onClick={() => enableSandboxMode(authEmail ? authEmail.split('@')[0] : "Sandbox Explorer")}
+              className="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-wide cursor-pointer text-center block transition-all"
+            >
+              🚀 Bypass: Switch to Local Sandbox Mode
+            </button>
           </div>
         );
       }
@@ -348,23 +454,54 @@ export default function App() {
       console.error("Guest login error:", err);
       let friendlyMessage: React.ReactNode = err.message || "Failed to sign in as guest.";
       if (err.code === 'auth/operation-not-allowed') {
-        friendlyMessage = "Anonymous guest sign-in is disabled in your Firebase console. Please go to your Firebase Console under Authentication -> Sign-in method and enable the Anonymous provider.";
+        friendlyMessage = (
+          <div className="space-y-3 text-left">
+            <p className="text-neutral-300">Anonymous guest sign-in is disabled in your Firebase console.</p>
+            <button
+              type="button"
+              onClick={() => enableSandboxMode("Sandbox Explorer")}
+              className="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-wide cursor-pointer text-center block transition-all"
+            >
+              🚀 Bypass: Switch to Local Sandbox Mode
+            </button>
+          </div>
+        );
       } else if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
         friendlyMessage = (
-          <div className="space-y-2 text-left">
-            <p className="font-bold text-rose-300">Firebase Error: Unauthorized Domain</p>
+          <div className="space-y-3 text-left">
+            <p className="font-bold text-rose-300">Firebase Error: Unauthorized Domain (Blocked by 2SV)</p>
             <p className="text-[11px] leading-relaxed text-neutral-300">
-              Your deployed Vercel domain is not authorized in your Firebase project. To fix this:
+              If you can't access Firebase Console to authorize this domain (due to Two-Step Verification or other blocks), you can bypass Firebase entirely:
             </p>
-            <ol className="list-decimal pl-4 text-[10px] space-y-1 text-neutral-400 font-sans">
-              <li>Open your <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">Firebase Console</a></li>
-              <li>Go to <strong className="text-neutral-200">Authentication</strong> &rarr; <strong className="text-neutral-200">Settings</strong> tab</li>
-              <li>Under <strong className="text-neutral-200">Authorized domains</strong>, click <strong className="text-neutral-200">Add domain</strong></li>
-              <li>Add: <code className="bg-neutral-900 px-1 py-0.5 rounded text-rose-300 font-mono text-[10px] select-all border border-neutral-800">{window.location.hostname}</code></li>
-            </ol>
-            <p className="text-[10px] text-neutral-400 mt-1">
-              Once added, refresh your browser tab and try signing up/in again!
-            </p>
+            <button
+              type="button"
+              onClick={() => enableSandboxMode("Sandbox Explorer")}
+              className="w-full py-2.5 px-4 rounded-xl bg-[#5194ec] hover:bg-blue-500 text-neutral-950 font-bold text-xs uppercase tracking-wide cursor-pointer text-center block transition-all"
+            >
+              🚀 Bypass & Enter via Local Sandbox Mode
+            </button>
+            <div className="pt-2 border-t border-neutral-900">
+              <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider mb-1">To connect Firebase instead:</p>
+              <ol className="list-decimal pl-4 text-[10px] space-y-1 text-neutral-400 font-sans">
+                <li>Open your <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">Firebase Console</a></li>
+                <li>Go to <strong className="text-neutral-200">Authentication</strong> &rarr; <strong className="text-neutral-200">Settings</strong> tab</li>
+                <li>Under <strong className="text-neutral-200">Authorized domains</strong>, click <strong className="text-neutral-200">Add domain</strong></li>
+                <li>Add: <code className="bg-neutral-900 px-1 py-0.5 rounded text-rose-300 font-mono text-[10px] select-all border border-neutral-800">{window.location.hostname}</code></li>
+              </ol>
+            </div>
+          </div>
+        );
+      } else {
+        friendlyMessage = (
+          <div className="space-y-3 text-left">
+            <p className="text-neutral-300">{err.message || "Failed to sign in."}</p>
+            <button
+              type="button"
+              onClick={() => enableSandboxMode("Sandbox Explorer")}
+              className="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-wide cursor-pointer text-center block transition-all"
+            >
+              🚀 Bypass: Switch to Local Sandbox Mode
+            </button>
           </div>
         );
       }
@@ -388,24 +525,42 @@ export default function App() {
         setAuthError("Sign-in popup was blocked by your browser. Please allow popups for this site and try again.");
       } else if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
         setAuthError(
-          <div className="space-y-2 text-left">
-            <p className="font-bold text-rose-300">Firebase Error: Unauthorized Domain</p>
+          <div className="space-y-3 text-left">
+            <p className="font-bold text-rose-300">Firebase Error: Unauthorized Domain (Blocked by 2SV)</p>
             <p className="text-[11px] leading-relaxed text-neutral-300">
-              Your deployed Vercel domain is not authorized in your Firebase project. To fix this:
+              If you can't access Firebase Console to authorize this domain (due to Two-Step Verification or other blocks), you can bypass Firebase entirely:
             </p>
-            <ol className="list-decimal pl-4 text-[10px] space-y-1 text-neutral-400 font-sans">
-              <li>Open your <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">Firebase Console</a></li>
-              <li>Go to <strong className="text-neutral-200">Authentication</strong> &rarr; <strong className="text-neutral-200">Settings</strong> tab</li>
-              <li>Under <strong className="text-neutral-200">Authorized domains</strong>, click <strong className="text-neutral-200">Add domain</strong></li>
-              <li>Add: <code className="bg-neutral-900 px-1 py-0.5 rounded text-rose-300 font-mono text-[10px] select-all border border-neutral-800">{window.location.hostname}</code></li>
-            </ol>
-            <p className="text-[10px] text-neutral-400 mt-1">
-              Once added, refresh your browser tab and try Google Sign-In again!
-            </p>
+            <button
+              type="button"
+              onClick={() => enableSandboxMode("Sandbox Explorer")}
+              className="w-full py-2.5 px-4 rounded-xl bg-[#5194ec] hover:bg-blue-500 text-neutral-950 font-bold text-xs uppercase tracking-wide cursor-pointer text-center block transition-all"
+            >
+              🚀 Bypass & Enter via Local Sandbox Mode
+            </button>
+            <div className="pt-2 border-t border-neutral-900">
+              <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider mb-1">To connect Firebase instead:</p>
+              <ol className="list-decimal pl-4 text-[10px] space-y-1 text-neutral-400 font-sans">
+                <li>Open your <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">Firebase Console</a></li>
+                <li>Go to <strong className="text-neutral-200">Authentication</strong> &rarr; <strong className="text-neutral-200">Settings</strong> tab</li>
+                <li>Under <strong className="text-neutral-200">Authorized domains</strong>, click <strong className="text-neutral-200">Add domain</strong></li>
+                <li>Add: <code className="bg-neutral-900 px-1 py-0.5 rounded text-rose-300 font-mono text-[10px] select-all border border-neutral-800">{window.location.hostname}</code></li>
+              </ol>
+            </div>
           </div>
         );
       } else {
-        setAuthError(err.message || "Failed to sign in with Google.");
+        setAuthError(
+          <div className="space-y-3 text-left">
+            <p className="text-neutral-300">{err.message || "Failed to sign in with Google."}</p>
+            <button
+              type="button"
+              onClick={() => enableSandboxMode("Sandbox Explorer")}
+              className="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-wide cursor-pointer text-center block transition-all"
+            >
+              🚀 Bypass: Switch to Local Sandbox Mode
+            </button>
+          </div>
+        );
       }
     } finally {
       setAuthLoading(false);
@@ -414,6 +569,17 @@ export default function App() {
 
   const handleSignOut = async () => {
     try {
+      if (localStorage.getItem('aix-sandbox-mode') === 'true') {
+        localStorage.removeItem('aix-sandbox-mode');
+        localStorage.removeItem('aix-sandbox-user');
+        setCurrentUser(null);
+        setUserNotes({});
+        setSavedBriefings([]);
+        const savedB = localStorage.getItem('aix-bookmarks');
+        setBookmarks(savedB ? JSON.parse(savedB) : []);
+        setToast("Signed out from local sandbox.");
+        return;
+      }
       await signOut(auth);
       setToast("Signed out from workspace.");
     } catch (err) {
@@ -425,17 +591,22 @@ export default function App() {
     const nextNotes = { ...userNotes, [url]: text };
     setUserNotes(nextNotes);
     setToast("Saving research note...");
-    if (auth.currentUser) {
+    if (currentUser && localStorage.getItem('aix-sandbox-mode') !== 'true') {
       await saveUserDataToFirestore({ notes: nextNotes });
       setToast("Research note saved to Cloud!");
     } else {
       localStorage.setItem('aix-notes', JSON.stringify(nextNotes));
-      setToast("Note saved locally! Sign in to sync.");
+      setToast("Note saved locally!");
     }
   };
 
   // --- Workspace & Speculations Functions ---
   const fetchSavedBriefings = async (uid: string) => {
+    if (localStorage.getItem('aix-sandbox-mode') === 'true') {
+      const saved = localStorage.getItem('aix-sandbox-briefings');
+      setSavedBriefings(saved ? JSON.parse(saved) : []);
+      return;
+    }
     try {
       const q = query(collection(db, 'users', uid, 'briefings'));
       const snapshot = await getDocs(q);
@@ -452,16 +623,30 @@ export default function App() {
   };
 
   const saveBriefingToCloud = async () => {
-    if (!auth.currentUser || !briefingMarkdown) return;
-    setToast("Saving briefing to Cloud...");
+    if (!currentUser || !briefingMarkdown) return;
+    setToast("Saving briefing...");
+    if (localStorage.getItem('aix-sandbox-mode') === 'true') {
+      const saved = localStorage.getItem('aix-sandbox-briefings');
+      const briefings = saved ? JSON.parse(saved) : [];
+      const newBriefing = {
+        id: "briefing-" + Date.now(),
+        markdown: briefingMarkdown,
+        createdAt: Date.now()
+      };
+      const updated = [newBriefing, ...briefings];
+      localStorage.setItem('aix-sandbox-briefings', JSON.stringify(updated));
+      setSavedBriefings(updated);
+      setToast("Briefing securely saved to local Sandbox!");
+      return;
+    }
     try {
-      const colRef = collection(db, 'users', auth.currentUser.uid, 'briefings');
+      const colRef = collection(db, 'users', currentUser.uid, 'briefings');
       await addDoc(colRef, {
         markdown: briefingMarkdown,
         createdAt: Date.now()
       });
       setToast("Briefing securely saved to Cloud!");
-      fetchSavedBriefings(auth.currentUser.uid);
+      fetchSavedBriefings(currentUser.uid);
     } catch (err) {
       console.error("Error saving briefing:", err);
       setToast("Failed to save briefing to Cloud.");
@@ -469,13 +654,22 @@ export default function App() {
   };
 
   const deleteBriefingFromCloud = async (id: string) => {
-    if (!auth.currentUser) return;
+    if (!currentUser) return;
     setToast("Deleting briefing...");
+    if (localStorage.getItem('aix-sandbox-mode') === 'true') {
+      const saved = localStorage.getItem('aix-sandbox-briefings');
+      const briefings = saved ? JSON.parse(saved) : [];
+      const updated = briefings.filter((b: any) => b.id !== id);
+      localStorage.setItem('aix-sandbox-briefings', JSON.stringify(updated));
+      setSavedBriefings(updated);
+      setToast("Briefing deleted from local Sandbox.");
+      return;
+    }
     try {
-      const docRef = doc(db, 'users', auth.currentUser.uid, 'briefings', id);
+      const docRef = doc(db, 'users', currentUser.uid, 'briefings', id);
       await deleteDoc(docRef);
       setToast("Briefing deleted.");
-      fetchSavedBriefings(auth.currentUser.uid);
+      fetchSavedBriefings(currentUser.uid);
     } catch (err) {
       console.error("Error deleting briefing:", err);
       setToast("Failed to delete briefing.");
@@ -509,6 +703,13 @@ export default function App() {
   };
 
   const fetchSpeculations = async () => {
+    if (localStorage.getItem('aix-sandbox-mode') === 'true') {
+      const localSpecs = localStorage.getItem('aix-sandbox-speculations');
+      if (localSpecs) {
+        setSpeculations(JSON.parse(localSpecs));
+        return;
+      }
+    }
     try {
       const q = query(collection(db, 'community_speculations'));
       const snapshot = await getDocs(q);
@@ -520,13 +721,45 @@ export default function App() {
       list.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
       setSpeculations(list);
     } catch (err) {
-      console.error("Error fetching speculations:", err);
+      console.error("Error fetching speculations from Firestore:", err);
+      // Fallback to local speculations
+      const localSpecs = localStorage.getItem('aix-sandbox-speculations');
+      if (localSpecs) {
+        setSpeculations(JSON.parse(localSpecs));
+      } else {
+        const mockSpecs = [
+          {
+            id: "spec-1",
+            title: "AGI will be achieved with multi-agent consensus before 2028",
+            category: "Models",
+            content: "Given the trajectory of recursive self-improvement and localized agent networks (like the ones TSMC 2nm chips will optimize), reasoning models will cross the zero-shot human evaluation threshold in the next 18 months.",
+            authorId: "anonymous",
+            authorName: "SiliconOptimist",
+            createdAt: Date.now() - 3600000 * 2,
+            likes: ["sandbox-guest"],
+            likesCount: 1
+          },
+          {
+            id: "spec-2",
+            title: "US will subsidize 100% clean power grids for sovereign compute nodes",
+            category: "Regulation",
+            content: "As energy requirements skyrocket for large-scale training clusters (like Blackwell B200 arrays), federal regulators will offer complete carbon offset tax credits to build dedicated next-gen nuclear plants.",
+            authorId: "anonymous2",
+            authorName: "GridArchitect",
+            createdAt: Date.now() - 3600000 * 24,
+            likes: [],
+            likesCount: 0
+          }
+        ];
+        localStorage.setItem('aix-sandbox-speculations', JSON.stringify(mockSpecs));
+        setSpeculations(mockSpecs);
+      }
     }
   };
 
   const handlePostSpeculation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth.currentUser) {
+    if (!currentUser) {
       setToast("Please sign in to publish speculations.");
       return;
     }
@@ -536,13 +769,38 @@ export default function App() {
     }
     setSpeculationLoading(true);
     setToast("Publishing speculation...");
+
+    if (localStorage.getItem('aix-sandbox-mode') === 'true') {
+      const saved = localStorage.getItem('aix-sandbox-speculations');
+      const specs = saved ? JSON.parse(saved) : [];
+      const newSpec = {
+        id: "spec-" + Date.now(),
+        title: speculationTitle,
+        category: speculationCategory,
+        content: speculationContent,
+        authorId: currentUser.uid,
+        authorName: currentUser.displayName || currentUser.email?.split('@')[0] || "Sandbox Explorer",
+        createdAt: Date.now(),
+        likes: [],
+        likesCount: 0
+      };
+      const updated = [newSpec, ...specs];
+      localStorage.setItem('aix-sandbox-speculations', JSON.stringify(updated));
+      setSpeculations(updated);
+      setSpeculationTitle("");
+      setSpeculationContent("");
+      setToast("Speculation live on local Sandbox stream!");
+      setSpeculationLoading(false);
+      return;
+    }
+
     try {
       await addDoc(collection(db, 'community_speculations'), {
         title: speculationTitle,
         category: speculationCategory,
         content: speculationContent,
-        authorId: auth.currentUser.uid,
-        authorName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || "Anonymous Developer",
+        authorId: currentUser.uid,
+        authorName: currentUser.displayName || currentUser.email?.split('@')[0] || "Anonymous Developer",
         createdAt: Date.now(),
         likes: [],
         likesCount: 0
@@ -560,15 +818,30 @@ export default function App() {
   };
 
   const handleLikeSpeculation = async (id: string, currentLikes: string[] = []) => {
-    if (!auth.currentUser) {
+    if (!currentUser) {
       setToast("Sign in to upvote speculations.");
       return;
     }
-    const uid = auth.currentUser.uid;
+    const uid = currentUser.uid;
     const isLiked = currentLikes.includes(uid);
     const nextLikes = isLiked 
       ? currentLikes.filter(l => l !== uid)
       : [...currentLikes, uid];
+
+    if (localStorage.getItem('aix-sandbox-mode') === 'true') {
+      const saved = localStorage.getItem('aix-sandbox-speculations');
+      const specs = saved ? JSON.parse(saved) : [];
+      const updated = specs.map((item: any) => {
+        if (item.id === id) {
+          return { ...item, likes: nextLikes, likesCount: nextLikes.length };
+        }
+        return item;
+      });
+      localStorage.setItem('aix-sandbox-speculations', JSON.stringify(updated));
+      setSpeculations(updated);
+      setToast(isLiked ? "Upvote removed." : "Speculation upvoted!");
+      return;
+    }
     
     try {
       const docRef = doc(db, 'community_speculations', id);
@@ -1169,20 +1442,20 @@ export default function App() {
         {/* 1. HEADER */}
         <header id="app-header" className={`flex items-center justify-between px-6 py-5 md:px-12 md:py-5 sticky top-0 z-50 backdrop-blur-md ${theme === 'dark' ? 'bg-[#020202]/30 border-b border-neutral-900/20' : 'bg-white/70 border-b border-neutral-200/50'}`}>
           {/* Logo */}
-          <div id="logo-container" className="flex items-center cursor-pointer font-sans" onClick={scrollToTop}>
+          <div id="logo-container" className="flex items-center cursor-pointer font-sans select-none" onClick={scrollToTop}>
             <span className={`font-display font-bold text-2xl tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>AI</span>
             <span className="font-display font-semibold text-2xl tracking-tight bg-gradient-to-r from-[#5194ec] to-[#91bdfa] bg-clip-text text-transparent ml-1 text-glow">X</span>
-            <span className="text-[10px] font-bold font-mono tracking-widest ml-2.5 border border-emerald-500/20 px-2 py-0.5 rounded bg-emerald-500/5 text-emerald-400 uppercase flex items-center gap-1.5 shadow-[0_0_12px_rgba(16,185,129,0.15)] select-none">
+            <span className="text-[10px] font-bold font-mono tracking-widest ml-2.5 border border-emerald-500/20 px-2 py-0.5 rounded bg-emerald-500/5 text-emerald-400 uppercase flex items-center gap-1.5 shadow-[0_0_12px_rgba(16,185,129,0.15)] select-none whitespace-nowrap">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
               </span>
-              Live Intel
+              <span className="hidden sm:inline">Live Intel</span>
             </span>
           </div>
 
           {/* Desktop Navigation Menu (Glassmorphism Pill) */}
-          <div className="hidden md:flex items-center justify-center flex-grow max-w-md mx-auto">
+          <div className="hidden lg:flex items-center justify-center flex-grow max-w-2xl mx-auto px-4">
             <AnimatePresence mode="wait">
               {showFullNav ? (
                 <motion.nav
@@ -1192,7 +1465,7 @@ export default function App() {
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.2 }}
                   id="desktop-nav"
-                  className={`flex items-center gap-8 px-8 py-2 rounded-full border ${theme === 'dark' ? 'bg-neutral-950/45 border-neutral-900/80' : 'bg-neutral-50 border-neutral-200'} backdrop-blur-xl shadow-inner`}
+                  className={`flex items-center gap-4 xl:gap-8 px-6 xl:px-8 py-2 rounded-full border ${theme === 'dark' ? 'bg-neutral-950/45 border-neutral-900/80' : 'bg-neutral-50 border-neutral-200'} backdrop-blur-xl shadow-inner`}
                 >
                   {navigationItems.map((item) => (
                     <a
@@ -1243,7 +1516,22 @@ export default function App() {
           </div>
 
           {/* Desktop Right Button */}
-          <div id="header-cta" className="hidden md:flex items-center gap-3.5 min-w-[120px] justify-end">
+          <div id="header-cta" className="hidden lg:flex items-center gap-2 xl:gap-3.5 min-w-[120px] justify-end">
+            <button
+              onClick={() => setIsGeminiDiagnosticModalOpen(true)}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border ${theme === 'dark' ? 'border-neutral-800 bg-neutral-950/40 text-neutral-300 hover:text-white' : 'border-neutral-200 bg-neutral-50 text-slate-600 hover:bg-neutral-100'} transition-all cursor-pointer active:scale-95`}
+              title="Verify & Diagnose Gemini API Status"
+            >
+              <Activity className={`w-4 h-4 ${isDiagnosticRunning ? 'animate-spin text-blue-400' : geminiStatus?.status === 'quota_exceeded' ? 'text-amber-400' : geminiStatus?.success ? 'text-green-400' : 'text-amber-400'}`} />
+              <span className="hidden xl:inline text-[11px] font-bold tracking-tight">
+                {isDiagnosticRunning ? 'Checking...' : geminiStatus?.status === 'quota_exceeded' ? 'AI Quota Exceeded' : geminiStatus?.success ? 'AI Connected' : 'AI Offline'}
+              </span>
+              <span className="flex h-2 w-2 relative">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${geminiStatus?.status === 'quota_exceeded' ? 'bg-amber-400' : geminiStatus?.success ? 'bg-green-400' : 'bg-amber-500'}`}></span>
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${geminiStatus?.status === 'quota_exceeded' ? 'bg-amber-500' : geminiStatus?.success ? 'bg-green-500' : 'bg-amber-500'}`}></span>
+              </span>
+            </button>
+
             <button
               onClick={() => setIsShortcutModalOpen(true)}
               className={`p-2 rounded-xl border ${theme === 'dark' ? 'border-neutral-800 bg-neutral-950/40 text-[#5194ec] hover:text-blue-400' : 'border-neutral-200 bg-neutral-50 text-slate-600 hover:bg-neutral-100'} transition-all cursor-pointer active:scale-95`}
@@ -1258,8 +1546,11 @@ export default function App() {
                   {currentUser.isAnonymous ? "G" : (currentUser.displayName?.[0]?.toUpperCase() || currentUser.email?.[0]?.toUpperCase() || "U")}
                 </div>
                 <div className="flex flex-col text-left">
-                  <span className="text-[10px] font-bold text-neutral-300 max-w-[80px] truncate leading-tight">
+                  <span className="text-[10px] font-bold text-neutral-300 max-w-[120px] truncate leading-tight flex items-center gap-1">
                     {currentUser.isAnonymous ? "Guest User" : (currentUser.displayName || currentUser.email?.split('@')[0])}
+                    {localStorage.getItem('aix-sandbox-mode') === 'true' && (
+                      <span className="bg-amber-500/10 text-amber-400 text-[8px] font-bold uppercase tracking-wider px-1 rounded border border-amber-500/20">Sandbox</span>
+                    )}
                   </span>
                   <button
                     onClick={handleSignOut}
@@ -1301,7 +1592,7 @@ export default function App() {
           </div>
 
           {/* Mobile Menu / Home Icon Button */}
-          <div className="md:hidden flex items-center">
+          <div className="lg:hidden flex items-center">
             {showFullNav ? (
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -1332,7 +1623,7 @@ export default function App() {
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.3 }}
               id="mobile-nav-drawer"
-              className="md:hidden bg-neutral-950 border-b border-neutral-900 px-6 py-6 flex flex-col gap-4 relative z-40 font-sans"
+              className="lg:hidden bg-neutral-950 border-b border-neutral-900 px-6 py-6 flex flex-col gap-4 relative z-40 font-sans"
             >
               {navigationItems.map((item) => (
                 <a
@@ -1378,7 +1669,9 @@ export default function App() {
                       <span className="text-sm font-semibold text-neutral-200">
                         {currentUser.isAnonymous ? "Guest Profile" : (currentUser.displayName || currentUser.email?.split('@')[0])}
                       </span>
-                      <span className="text-[10px] text-neutral-500 font-mono">Firebase Connected</span>
+                      <span className="text-[10px] text-neutral-500 font-mono">
+                        {localStorage.getItem('aix-sandbox-mode') === 'true' ? "Local Sandbox Mode" : "Firebase Connected"}
+                      </span>
                     </div>
                   </div>
                   <button
@@ -1418,6 +1711,17 @@ export default function App() {
                   <ArrowRight className="w-4 h-4 text-neutral-400" />
                 </button>
               )}
+
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setIsGeminiDiagnosticModalOpen(true);
+                }}
+                className={`w-full flex items-center justify-center gap-2.5 py-3 rounded-xl border ${theme === 'dark' ? 'border-neutral-800 bg-neutral-900/40 text-neutral-300' : 'border-neutral-200 bg-neutral-50 text-slate-700'} transition-all duration-300 cursor-pointer text-xs font-bold mt-2`}
+              >
+                <Activity className={`w-4 h-4 ${isDiagnosticRunning ? 'animate-spin text-blue-400' : geminiStatus?.status === 'quota_exceeded' ? 'text-amber-400' : geminiStatus?.success ? 'text-green-400' : 'text-amber-400'}`} />
+                <span>{isDiagnosticRunning ? 'Testing AI Connection...' : geminiStatus?.status === 'quota_exceeded' ? 'AI Status: Quota Exceeded' : geminiStatus?.success ? 'AI Status: Active & Connected' : 'AI Status: Demo Fallback'}</span>
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -3034,6 +3338,150 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Gemini Diagnostics Modal */}
+      <AnimatePresence>
+        {isGeminiDiagnosticModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsGeminiDiagnosticModalOpen(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="relative w-full max-w-lg bg-[#0a0a0a] border border-neutral-800 rounded-3xl p-6 sm:p-7 overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.85)] z-10"
+            >
+              <div className="absolute -top-[20%] -left-[20%] w-[60%] h-[60%] bg-blue-500/10 rounded-full blur-[60px] pointer-events-none" />
+
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                    <Activity className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <h3 className="font-display text-lg font-semibold text-white tracking-tight">AI Key Diagnostics</h3>
+                </div>
+                <button
+                  onClick={() => setIsGeminiDiagnosticModalOpen(false)}
+                  className="p-1.5 rounded-lg hover:bg-neutral-900 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <CloseIcon className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Status Banner */}
+              <div className={`p-4 rounded-2xl border mb-5 flex gap-3 ${
+                isDiagnosticRunning 
+                  ? 'bg-blue-500/5 border-blue-500/20 text-blue-300' 
+                  : geminiStatus?.status === 'quota_exceeded'
+                    ? 'bg-amber-500/5 border-amber-500/20 text-amber-300'
+                    : geminiStatus?.success 
+                      ? 'bg-green-500/5 border-green-500/20 text-green-300' 
+                      : 'bg-amber-500/5 border-amber-500/20 text-amber-300'
+              }`}>
+                {isDiagnosticRunning ? (
+                  <Loader2 className="w-5 h-5 animate-spin shrink-0 text-blue-400 mt-0.5" />
+                ) : geminiStatus?.status === 'quota_exceeded' ? (
+                  <AlertCircle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
+                ) : geminiStatus?.success ? (
+                  <Check className="w-5 h-5 shrink-0 text-green-400 mt-0.5 border border-green-500/30 rounded-full p-0.5" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
+                )}
+                <div className="flex flex-col text-xs leading-relaxed text-left">
+                  <span className="font-bold text-sm text-white">
+                    {isDiagnosticRunning 
+                      ? 'Running Live Connection Test...' 
+                      : geminiStatus?.status === 'quota_exceeded'
+                        ? 'Key Valid (Quota Exceeded)'
+                        : geminiStatus?.success 
+                          ? 'Active & Connected' 
+                          : 'Demo Fallback Mode'}
+                  </span>
+                  <p className="text-neutral-400 mt-1">
+                    {isDiagnosticRunning 
+                      ? 'Re-checking credentials and performing a lightweight model generation query.' 
+                      : geminiStatus?.message || geminiStatus?.reason || 'The application is running in local offline demo mode.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Diagnostic Parameters */}
+              <div className="space-y-3.5 mb-6 text-xs bg-neutral-950/40 border border-neutral-900 rounded-2xl p-4 font-mono text-neutral-400 text-left">
+                <div className="flex items-center justify-between pb-2 border-b border-neutral-900/40">
+                  <span className="text-neutral-500 font-sans font-medium">Environment Secret Key</span>
+                  <span className={`text-[11px] font-bold ${geminiStatus?.hasKey && !geminiStatus?.isPlaceholder ? 'text-green-400' : 'text-amber-400'}`}>
+                    {geminiStatus?.hasKey ? (geminiStatus?.isPlaceholder ? 'Default Placeholder' : 'Key Configured') : 'Not Detected'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pb-2 border-b border-neutral-900/40">
+                  <span className="text-neutral-500 font-sans font-medium">Masked Value</span>
+                  <span className="text-white text-[11px] bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800">
+                    {geminiStatus?.maskedKey || 'None'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pb-2 border-b border-neutral-900/40">
+                  <span className="text-neutral-500 font-sans font-medium">Key Character Length</span>
+                  <span>{geminiStatus?.keyLength || 0} characters</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-500 font-sans font-medium">Auto-Quotes Stripped</span>
+                  <span className={geminiStatus?.hadQuotes ? 'text-amber-400 font-bold' : 'text-neutral-500'}>
+                    {geminiStatus?.hadQuotes ? 'Yes (Enclosing Quotes Cleaned!)' : 'No'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Troubleshooting logs if errored */}
+              {geminiStatus?.errorMessage && (
+                <div className="mb-6 text-left">
+                  <span className="text-[10px] font-bold text-rose-400 font-sans uppercase tracking-wider block mb-2">Live Error Details (From Google Servers)</span>
+                  <div className="p-3 bg-rose-500/5 border border-rose-500/10 rounded-xl font-mono text-[11px] text-rose-300 max-h-[120px] overflow-y-auto leading-relaxed whitespace-pre-wrap">
+                    {geminiStatus.errorName || 'GoogleGenAIError'}: {geminiStatus.errorMessage}
+                    {geminiStatus.errorStatus && `\nStatus Code: ${geminiStatus.errorStatus}`}
+                  </div>
+                </div>
+              )}
+
+              {/* Instructions on Setup */}
+              <div className="p-4 bg-neutral-950/60 border border-neutral-900 rounded-2xl mb-6 text-xs text-left">
+                <span className="font-semibold text-white block mb-2.5">How to set up your API Key:</span>
+                <ol className="space-y-2 text-neutral-400 list-decimal pl-4 leading-relaxed">
+                  <li>Get a free Gemini API key from the <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Google AI Studio console</a>.</li>
+                  <li>Click on the <strong className="text-white font-medium">Settings (Gear Icon)</strong> in the top-right corner of this AI Studio sandbox window.</li>
+                  <li>Select the <strong className="text-white font-medium">Secrets</strong> tab in the menu.</li>
+                  <li>Add a new secret named <code className="text-white bg-neutral-900 px-1 py-0.5 rounded border border-neutral-800 font-mono text-[11px]">GEMINI_API_KEY</code> and paste your key.</li>
+                  <li>Click <strong className="text-white font-medium">Save</strong>, then click the <strong className="text-blue-400 hover:underline cursor-pointer" onClick={runGeminiDiagnostic}>Test Connection</strong> button below!</li>
+                </ol>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  onClick={runGeminiDiagnostic}
+                  disabled={isDiagnosticRunning}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer active:scale-95 disabled:scale-100 disabled:opacity-50 transition-all shadow-[0_4px_12px_rgba(59,130,246,0.3)]"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isDiagnosticRunning ? 'animate-spin' : ''}`} />
+                  <span>{isDiagnosticRunning ? 'Testing...' : 'Re-run Test Connection'}</span>
+                </button>
+                <button
+                  onClick={() => setIsGeminiDiagnosticModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 font-bold text-xs active:scale-95 transition-all cursor-pointer border border-neutral-800"
+                >
+                  Close Diagnostics
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Universal Search & Discovery Engine */}
       <UniversalSearchOverlay
         isOpen={isSearchPaletteOpen}
@@ -3186,6 +3634,22 @@ export default function App() {
               >
                 <Sparkles className="w-3.5 h-3.5 text-blue-400" />
                 <span>1-Click Anonymous Guest Sign In</span>
+              </button>
+
+              {/* Sandbox Bypass option for users blocked by 2SV/domains */}
+              <div className="relative flex py-4 items-center">
+                <div className="flex-grow border-t border-neutral-900"></div>
+                <span className="flex-shrink mx-3 text-[10px] font-mono text-amber-500/80 uppercase tracking-widest">Blocked by 2SV / Domain restrictions?</span>
+                <div className="flex-grow border-t border-neutral-900"></div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => enableSandboxMode("Sandbox Explorer")}
+                className="w-full py-3.5 rounded-xl border border-amber-500/20 bg-amber-500/10 hover:bg-amber-500/15 text-amber-400 hover:text-amber-300 text-xs font-bold tracking-wider uppercase transition-all cursor-pointer flex items-center justify-center gap-2 shadow-inner"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <span>✨ 1-Click Offline Sandbox Bypass</span>
               </button>
 
               <div className="mt-5 text-center text-xs text-neutral-500">
@@ -3407,6 +3871,14 @@ export default function App() {
               }}
               currentUser={currentUser}
               theme={theme}
+              currentPath={currentCommunityPath || '/community'}
+              onNavigate={(route) => {
+                setCurrentCommunityPath(route);
+                window.history.pushState(null, '', route);
+              }}
+              onOpenModel={(slug) => setActiveModelSlug(slug)}
+              onOpenCompany={(slug) => setActiveCompanySlug(slug)}
+              onOpenResearch={(slug) => handleOpenResearchPage(slug)}
             />
           </motion.div>
         )}

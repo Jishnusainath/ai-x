@@ -415,39 +415,66 @@ ${action === 'summarize' ? `- Core insights extracted safely.
 if (typeof window !== "undefined") {
   const originalFetch = window.fetch;
 
-  window.fetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  try {
+    Object.defineProperty(window, "fetch", {
+      value: async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 
-    if (url.startsWith("/api/")) {
-      try {
-        const response = await originalFetch(input, init);
-        
-        // Check if the response is OK and has a valid JSON Content-Type
-        if (response.ok) {
-          const contentType = response.headers.get("content-type") || "";
-          if (contentType.includes("application/json")) {
-            // Clone the response before reading to avoid locking the stream
-            const clone = response.clone();
-            try {
-              await clone.json(); // verify it is valid JSON
-              return response;
-            } catch (e) {
-              console.warn("[Interceptor] API returned invalid JSON, falling back to local fallback:", e);
-            }
-          } else {
-            console.warn("[Interceptor] API returned non-JSON response, falling back to local fallback:", contentType);
-          }
-        } else {
-          console.warn("[Interceptor] API returned non-OK status:", response.status, "falling back to local fallback");
+        if (url.includes("/api/gemini-diagnostic") || url.includes("/api/health")) {
+          return originalFetch(input, init);
         }
-      } catch (networkError) {
-        console.warn("[Interceptor] API network error, falling back to local fallback:", networkError);
-      }
 
-      // Fall back to client-side mock handlers
-      return handleMockRoute(url, init);
+        if (url.startsWith("/api/")) {
+          try {
+            const response = await originalFetch(input, init);
+            
+            // Check if the response is OK and has a valid JSON Content-Type
+            if (response.ok) {
+              const contentType = response.headers.get("content-type") || "";
+              if (contentType.includes("application/json")) {
+                // Clone the response before reading to avoid locking the stream
+                const clone = response.clone();
+                try {
+                  await clone.json(); // verify it is valid JSON
+                  return response;
+                } catch (e) {
+                  console.warn("[Interceptor] API returned invalid JSON, falling back to local fallback:", e);
+                }
+              } else {
+                console.warn("[Interceptor] API returned non-JSON response, falling back to local fallback:", contentType);
+              }
+            } else {
+              console.warn("[Interceptor] API returned non-OK status:", response.status, "falling back to local fallback");
+            }
+          } catch (networkError) {
+            console.warn("[Interceptor] API network error, falling back to local fallback:", networkError);
+          }
+
+          // Fall back to client-side mock handlers
+          return handleMockRoute(url, init);
+        }
+
+        return originalFetch(input, init);
+      },
+      writable: true,
+      configurable: true
+    });
+  } catch (err) {
+    console.error("[Interceptor] Failed to redefine window.fetch with Object.defineProperty:", err);
+    try {
+      // Fallback try in case the defineProperty failed but regular assignment works
+      (window as any).fetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/api/gemini-diagnostic") || url.includes("/api/health")) {
+          return originalFetch(input, init);
+        }
+        if (url.startsWith("/api/")) {
+          return handleMockRoute(url, init);
+        }
+        return originalFetch(input, init);
+      };
+    } catch (e) {
+      console.error("[Interceptor] Totally unable to patch window.fetch:", e);
     }
-
-    return originalFetch(input, init);
-  };
+  }
 }

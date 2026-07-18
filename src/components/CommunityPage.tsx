@@ -346,7 +346,8 @@ export default function CommunityPage({
 }: CommunityPageProps) {
   
   // Tab Routing
-  const getTabFromPath = (path: string): 'community' | 'profile' | 'discussions' | 'collections' | 'leaderboards' | 'teams' | 'admin' => {
+  const getTabFromPath = (path?: string | null): 'community' | 'profile' | 'discussions' | 'collections' | 'leaderboards' | 'teams' | 'admin' => {
+    if (!path) return 'community';
     if (path.startsWith('/profile')) return 'profile';
     if (path.startsWith('/discussions')) return 'discussions';
     if (path.startsWith('/collections')) return 'collections';
@@ -752,43 +753,43 @@ export default function CommunityPage({
         {/* NAVIGATION PIPES */}
         <nav className="hidden lg:flex items-center gap-1 bg-neutral-900/50 p-1 rounded-full border border-neutral-900" role="tablist">
           <button 
-            onClick={() => onNavigate('/community')}
+            onClick={() => onNavigate?.('/community')}
             className={`px-4 py-1.5 rounded-full text-xs font-medium font-mono transition-all ${activeTab === 'community' ? 'bg-amber-500 text-neutral-950 font-bold shadow-md' : 'text-neutral-400 hover:text-white'}`}
           >
             Community
           </button>
           <button 
-            onClick={() => onNavigate('/discussions')}
+            onClick={() => onNavigate?.('/discussions')}
             className={`px-4 py-1.5 rounded-full text-xs font-medium font-mono transition-all ${activeTab === 'discussions' ? 'bg-amber-500 text-neutral-950 font-bold' : 'text-neutral-400 hover:text-white'}`}
           >
             Discussions
           </button>
           <button 
-            onClick={() => onNavigate('/collections')}
+            onClick={() => onNavigate?.('/collections')}
             className={`px-4 py-1.5 rounded-full text-xs font-medium font-mono transition-all ${activeTab === 'collections' ? 'bg-amber-500 text-neutral-950 font-bold' : 'text-neutral-400 hover:text-white'}`}
           >
             Collections
           </button>
           <button 
-            onClick={() => onNavigate('/leaderboards')}
+            onClick={() => onNavigate?.('/leaderboards')}
             className={`px-4 py-1.5 rounded-full text-xs font-medium font-mono transition-all ${activeTab === 'leaderboards' ? 'bg-amber-500 text-neutral-950 font-bold' : 'text-neutral-400 hover:text-white'}`}
           >
             Leaderboards
           </button>
           <button 
-            onClick={() => onNavigate('/teams')}
+            onClick={() => onNavigate?.('/teams')}
             className={`px-4 py-1.5 rounded-full text-xs font-medium font-mono transition-all ${activeTab === 'teams' ? 'bg-amber-500 text-neutral-950 font-bold' : 'text-neutral-400 hover:text-white'}`}
           >
             Workspaces
           </button>
           <button 
-            onClick={() => onNavigate('/profile')}
+            onClick={() => onNavigate?.('/profile')}
             className={`px-4 py-1.5 rounded-full text-xs font-medium font-mono transition-all ${activeTab === 'profile' ? 'bg-amber-500 text-neutral-950 font-bold' : 'text-neutral-400 hover:text-white'}`}
           >
             Profile
           </button>
           <button 
-            onClick={() => onNavigate('/admin')}
+            onClick={() => onNavigate?.('/admin')}
             className={`px-4 py-1.5 rounded-full text-xs font-medium font-mono transition-all ${activeTab === 'admin' ? 'bg-amber-500 text-neutral-950 font-bold' : 'text-neutral-400 hover:text-white'}`}
           >
             Admin Panel
@@ -861,10 +862,10 @@ export default function CommunityPage({
                       Sync folders, share bookmark arrays with your team, and build public collections of specialized machine learning papers. Engage in verified discussions regarding hardware thermal efficiency and reasoning model benchmarks.
                     </p>
                     <div className="flex flex-wrap gap-3 mt-6">
-                      <button onClick={() => onNavigate('/collections')} className="px-5 py-2 bg-amber-500 text-neutral-950 font-bold font-mono text-xs rounded-full hover:bg-amber-400 transition-all flex items-center gap-1.5">
+                      <button onClick={() => onNavigate?.('/collections')} className="px-5 py-2 bg-amber-500 text-neutral-950 font-bold font-mono text-xs rounded-full hover:bg-amber-400 transition-all flex items-center gap-1.5">
                         <FolderHeart className="w-3.5 h-3.5" /> Curate Collections
                       </button>
-                      <button onClick={() => onNavigate('/discussions')} className="px-5 py-2 bg-neutral-900 border border-neutral-800 text-white font-bold font-mono text-xs rounded-full hover:bg-neutral-800 transition-all flex items-center gap-1.5">
+                      <button onClick={() => onNavigate?.('/discussions')} className="px-5 py-2 bg-neutral-900 border border-neutral-800 text-white font-bold font-mono text-xs rounded-full hover:bg-neutral-800 transition-all flex items-center gap-1.5">
                         <MessageSquare className="w-3.5 h-3.5" /> Join discussions
                       </button>
                     </div>
@@ -880,7 +881,7 @@ export default function CommunityPage({
                       <h3 className="font-bold font-mono text-sm tracking-tight flex items-center gap-2">
                         <Flame className="w-4 h-4 text-amber-500 animate-pulse" /> TRENDING DISCUSSIONS
                       </h3>
-                      <button onClick={() => onNavigate('/discussions')} className="text-xs text-amber-500 hover:underline flex items-center gap-1 font-mono">
+                      <button onClick={() => onNavigate?.('/discussions')} className="text-xs text-amber-500 hover:underline flex items-center gap-1 font-mono">
                         View All <ChevronRight className="w-3.5 h-3.5" />
                       </button>
                     </div>

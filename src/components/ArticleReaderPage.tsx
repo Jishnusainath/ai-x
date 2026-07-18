@@ -668,24 +668,24 @@ Exported from AI X Intelligence Terminal.`;
           {/* SEC 1: HERO BANNER */}
           <section id="section-hero" className="space-y-6 text-left max-w-4xl mx-auto">
             {/* Visual Header Grid Card */}
-            <div className="relative aspect-[21/9] w-full rounded-2xl overflow-hidden border border-neutral-900 shadow-2xl group flex items-center justify-center bg-gradient-to-br from-neutral-950 via-[#0a0a0a] to-neutral-950">
+            <div className="relative aspect-[16/10] sm:aspect-[21/9] w-full rounded-2xl overflow-hidden border border-neutral-900 shadow-2xl group flex items-center justify-center bg-gradient-to-br from-neutral-950 via-[#0a0a0a] to-neutral-950">
               {/* Category-based vector backgrounds */}
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(81,148,236,0.06)_0%,transparent_70%)]" />
               <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "radial-gradient(#ffffff 1px, transparent 1px)", backgroundSize: "16px 16px" }} />
               
-              <div className="flex flex-col items-center text-center p-6 relative z-10 space-y-2">
-                <Cpu className="w-12 h-12 text-[#5194ec] animate-pulse" />
-                <span className="text-[10px] font-mono text-[#5194ec] uppercase tracking-widest">REAL-TIME INTEL GRAPH SYSTEM</span>
-                <span className="text-xs text-neutral-500 font-mono">NODE IDENTIFIER: {article.source?.toUpperCase() || "AI_X_SOURCE"}</span>
+              <div className="flex flex-col items-center text-center p-6 pt-12 sm:pt-6 relative z-10 space-y-1.5 sm:space-y-2">
+                <Cpu className="w-8 h-8 sm:w-12 sm:h-12 text-[#5194ec] animate-pulse" />
+                <span className="text-[9px] sm:text-[10px] font-mono text-[#5194ec] uppercase tracking-widest">REAL-TIME INTEL GRAPH SYSTEM</span>
+                <span className="text-[10px] sm:text-xs text-neutral-500 font-mono">NODE IDENTIFIER: {article.source?.toUpperCase() || "AI_X_SOURCE"}</span>
               </div>
 
               {/* Badges overlay */}
-              <div className="absolute top-4 left-4 flex flex-wrap gap-2">
-                <span className="text-[9px] font-bold font-mono uppercase text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/15">
+              <div className="absolute top-3 left-3 sm:top-4 sm:left-4 flex flex-wrap gap-1.5 sm:gap-2">
+                <span className="text-[8px] sm:text-[9px] font-bold font-mono uppercase text-blue-400 bg-blue-500/10 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg border border-blue-500/15">
                   {article.category || "Foundation Models"}
                 </span>
-                <span className="text-[9px] font-bold font-mono uppercase text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/15 flex items-center gap-1">
-                  <Award className="w-3 h-3 animate-pulse text-amber-400" />
+                <span className="text-[8px] sm:text-[9px] font-bold font-mono uppercase text-amber-400 bg-amber-500/10 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg border border-amber-500/15 flex items-center gap-1">
+                  <Award className="w-2.5 h-2.5 sm:w-3 sm:h-3 animate-pulse text-amber-400" />
                   HIGH IMPACT VERDICT
                 </span>
               </div>

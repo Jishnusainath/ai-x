@@ -196,6 +196,10 @@ export default function WorkspacePage({
 
     // 2. Sync with Firestore if logged in
     if (currentUser) {
+      if (currentUser.uid?.includes('sandbox-guest') || localStorage.getItem('aix-sandbox-mode') === 'true') {
+        setSyncStatus('synced');
+        return;
+      }
       setSyncStatus('loading');
       const syncRef = doc(db, `users/${currentUser.uid}/workspace/state`);
       getDoc(syncRef).then((snapshot) => {
@@ -257,7 +261,7 @@ export default function WorkspacePage({
       localStorage.setItem('aix-workspace-v1', JSON.stringify(next));
 
       // Trigger Cloud sync if user logged in
-      if (currentUser) {
+      if (currentUser && !currentUser.uid?.includes('sandbox-guest') && localStorage.getItem('aix-sandbox-mode') !== 'true') {
         setSyncStatus('saving');
         const syncRef = doc(db, `users/${currentUser.uid}/workspace/state`);
         setDoc(syncRef, next, { merge: true }).then(() => {
@@ -933,8 +937,11 @@ export default function WorkspacePage({
               <div className="w-5 h-5 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center text-[10px] font-bold text-white shadow-md">
                 {currentUser.isAnonymous ? "G" : (currentUser.displayName?.[0]?.toUpperCase() || currentUser.email?.[0]?.toUpperCase() || "U")}
               </div>
-              <span className="text-[10px] font-bold text-neutral-300 font-mono">
+              <span className="text-[10px] font-bold text-neutral-300 font-mono flex items-center gap-1.5">
                 {currentUser.isAnonymous ? "Guest Profile" : (currentUser.displayName || currentUser.email?.split('@')[0])}
+                {localStorage.getItem('aix-sandbox-mode') === 'true' && (
+                  <span className="bg-amber-500/10 text-amber-400 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-amber-500/20">Sandbox</span>
+                )}
               </span>
             </div>
           ) : (

@@ -51,7 +51,16 @@ export default function BenchmarkDashboardPage({
   const [sortField, setSortField] = useState<string>('overall');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [isCompareMode, setIsCompareMode] = useState(false);
-  const [compareModeType, setCompareModeType] = useState<'side-by-side' | 'table' | 'cards' | 'radar' | 'bar'>('side-by-side');
+  const [compareModeType, setCompareModeType] = useState<'side-by-side' | 'table' | 'cards' | 'radar' | 'bar' | 'arena'>('side-by-side');
+
+  // Model Chat Arena Sandbox States
+  const [arenaPrompt, setArenaPrompt] = useState('');
+  const [arenaLoading, setArenaLoading] = useState(false);
+  const [arenaResults, setArenaResults] = useState<Record<string, { response: string; thought?: string; timeMs: number; tokens: number; hasVoted?: boolean }>>({});
+  const [arenaLeaderboard, setArenaLeaderboard] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('aix_arena_leaderboard');
+    return saved ? JSON.parse(saved) : { 'gpt-5': 420, 'claude-4': 415, 'deepseek-r1': 398, 'gemini-3.5-flash': 310, 'llama-4': 295 };
+  });
   
   // Timeframes for historical plot
   const [timeframe, setTimeframe] = useState<'6M' | '1Y' | 'ALL'>('ALL');
@@ -484,6 +493,180 @@ export default function BenchmarkDashboardPage({
       return updated;
     });
     playChime(640, 0.08);
+  };
+
+  // Execute Arena Battle
+  const handleArenaBattle = async () => {
+    if (!arenaPrompt.trim()) {
+      triggerToast('Please write a prompt to start the arena battle');
+      return;
+    }
+
+    setArenaLoading(true);
+    playChime(620, 0.1, 'triangle');
+
+    // Gather selected models
+    const activeModels = compareModelIds.map(id => MODELS_INTEL[id]).filter(Boolean);
+    if (activeModels.length === 0) {
+      triggerToast('Please select at least two models for comparison');
+      setArenaLoading(false);
+      return;
+    }
+
+    // Initialize loading state for each model
+    const results: Record<string, any> = {};
+    activeModels.forEach(m => {
+      results[m.id] = { response: 'Generating response...', thought: m.id === 'deepseek-r1' ? 'Thinking step-by-step...' : undefined, timeMs: 0, tokens: 0 };
+    });
+    setArenaResults(results);
+
+    // Call API /api/chat or mock to fetch a base core technical answer
+    let baseAnswer = '';
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: arenaPrompt })
+      });
+      const data = await res.json();
+      baseAnswer = data.text;
+    } catch (e) {
+      baseAnswer = `Here is a structured technical response to your prompt: "${arenaPrompt}". In full production, this would leverage the actual model's api key and parameters. Let's outline the core architectures and considerations.`;
+    }
+
+    // Custom delay helper
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    
+    for (const m of activeModels) {
+      // Simulate slight variable latencies based on actual benchmarks
+      const latencyMultiplier = m.id === 'gemini-3.5-flash' ? 0.3 : m.id === 'deepseek-r1' ? 1.5 : m.id === 'claude-4' ? 1.1 : 0.8;
+      const actualLatency = Math.round((1200 + Math.random() * 800) * latencyMultiplier);
+      const tokenCount = Math.round(250 + Math.random() * 150);
+
+      let customResponse = '';
+      let customThought = '';
+
+      if (m.id === 'deepseek-r1') {
+        customThought = `Analyzing prompt: "${arenaPrompt}"
+1. Identify primary tech stack constraints (distributed scaling, state coordination).
+2. Review mathematical models for optimization (consistent hashing, Paxos/Raft log consensus).
+3. Evaluate trade-offs between memory bandwidth and system complexity.
+4. Formulate precise C++ or Rust implementation guidelines.`;
+        
+        customResponse = `### 思考过程 (Reasoning Path)
+${customThought}
+
+---
+
+### DeepSeek-R1 Architecture Resolution:
+Based on the reasoning trace, here is the optimized solution:
+
+1. **State Partitioning**: Implement virtual node mapping with MD5-based consistent hashing to minimize rebalancing overhead during cluster expansions.
+2. **Log Consensus**: Utilize a lightweight Raft layer with batching to maximize transaction throughput.
+3. **Rust Memory Allocation**: Let's specify the zero-copy buffer architecture to prevent garbage collection pauses during heavy load peaks:
+
+\`\`\`rust
+// Zero-copy arena allocator wrapper
+struct SecureCacheBuffer<'a> {
+    data: &'a [u8],
+    checksum: u32,
+}
+\`\`\`
+
+*Latency profile validated at ${actualLatency}ms.*`;
+      } else if (m.id === 'claude-4') {
+        customResponse = `### Claude 4 Opus Technical Specification:
+Evaluating your inquiry with systemic precision. Let's break down the optimal design patterns:
+
+*   **Modular Architecture**: Separate the query parsing thread from the storage engine kernel.
+*   **Mathematical Proof**: The state consistency under network partition can be formalized as:
+    $$P(State) = \\prod_{i=1}^{n} C_i$$
+*   **Code Implementation**: Here is a clean, modular TypeScript interface defining the distribution contract:
+
+\`\`\`typescript
+interface IDistributedCache {
+  get(key: string): Promise<ArrayBuffer | null>;
+  set(key: string, value: ArrayBuffer, ttlSeconds: number): Promise<boolean>;
+}
+\`\`\`
+
+Please consider that Claude 4 Opus prioritizes structured type-safety and detailed mathematical justification.`;
+      } else if (m.id === 'gemini-3.5-flash' || m.id === 'gemini-2.5-pro') {
+        customResponse = `### Gemini Grounded Analysis:
+*Live Web Search Grounding Status: Active*
+
+Based on real-time developer telemetry and multi-modal specifications, here is the immediate actionable setup:
+
+*   **Key Advantage**: Rapid ingestion of massive context windows (up to 2M tokens).
+*   **Recommended Framework**: Leverage Native Google Cloud Run sidecars with Redis clusters for low-latency distribution.
+*   **Integration Example**:
+    \`\`\`bash
+    # Pull standard secure proxy image
+    docker pull gcr.io/cloud-apigee-gateway/secure-proxy:latest
+    \`\`\`
+
+*💡 Protip*: Use Gemini's high-speed tool calling for dynamic orchestration pipelines rather than standard rigid scripting.`;
+      } else {
+        // GPT-5 (Sovereign) or other
+        customResponse = `### GPT-5 (Sovereign) Corporate Specification:
+Executive summary of the requested technical framework:
+
+| Metric | Target Specification |
+| :--- | :--- |
+| **Throughput** | > 150,000 requests/sec |
+| **Availability** | 99.999% SLA (Multi-region) |
+| **Encryption** | TLS 1.3 / AES-256-GCM |
+
+#### Proposed Implementation Roadmap:
+1. **Phase 1**: Cluster bootstrap with Consul/Etcd.
+2. **Phase 2**: Dual-write backup sync.
+
+GPT-5 Sovereign achieves a high level of operational reliability and enterprise compliance out-of-the-box.`;
+      }
+
+      // Add a portion of the actual baseAnswer to keep it relevant to what the user typed!
+      if (baseAnswer) {
+        customResponse = `${customResponse}\n\n**Response Grounding Draft**:\n${baseAnswer.length > 300 ? baseAnswer.substring(0, 300) + '...' : baseAnswer}`;
+      }
+
+      // Simulate a stagger/streaming effect
+      await delay(400);
+
+      setArenaResults(prev => ({
+        ...prev,
+        [m.id]: {
+          response: customResponse,
+          thought: customThought || undefined,
+          timeMs: actualLatency,
+          tokens: tokenCount,
+          hasVoted: false
+        }
+      }));
+    }
+
+    setArenaLoading(false);
+    playChime(850, 0.15, 'sine');
+  };
+
+  // Register Arena Vote
+  const handleArenaVote = (modelId: string) => {
+    setArenaLeaderboard(prev => {
+      const updated = { ...prev, [modelId]: (prev[modelId] || 0) + 1 };
+      localStorage.setItem('aix_arena_leaderboard', JSON.stringify(updated));
+      return updated;
+    });
+
+    setArenaResults(prev => {
+      const updated = { ...prev };
+      if (updated[modelId]) {
+        updated[modelId] = { ...updated[modelId], hasVoted: true };
+      }
+      return updated;
+    });
+
+    const winningModel = MODELS_INTEL[modelId];
+    triggerToast(`Vote registered! ${winningModel?.name || modelId} Arena Score incremented.`);
+    playChime(950, 0.2, 'sine');
   };
 
   // Saved Comparisons (Workspace integration)
@@ -1089,7 +1272,8 @@ export default function BenchmarkDashboardPage({
                   {([
                     { id: 'side-by-side', label: 'Matrix' },
                     { id: 'table', label: 'Specs Table' },
-                    { id: 'radar', label: 'Radar' }
+                    { id: 'radar', label: 'Radar' },
+                    { id: 'arena', label: 'Arena Sandbox' }
                   ] as const).map(tab => (
                     <button
                       key={tab.id}
@@ -1355,6 +1539,174 @@ export default function BenchmarkDashboardPage({
                       })}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* RENDER MODE D: MODEL CHAT ARENA SANDBOX */}
+              {compareModeType === 'arena' && (
+                <div className="space-y-6">
+                  <div className="bg-[#08080a] border border-neutral-900 rounded-2xl p-5 md:p-6 space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-mono font-bold text-[#5194ec] uppercase tracking-widest block">LLM Reasoning Battle Sandbox</span>
+                        <h3 className="text-sm font-semibold text-white">Interactive Model Chat Arena</h3>
+                        <p className="text-xs text-neutral-500">
+                          Submit a custom prompt to trigger simultaneous side-by-side technical generations. Rate and vote on the superior output.
+                        </p>
+                      </div>
+
+                      {/* Small Arena Scoreboard */}
+                      <div className="bg-neutral-950 border border-neutral-900 rounded-xl p-3 space-y-1.5 min-w-[200px]">
+                        <span className="text-[8px] font-mono text-neutral-500 uppercase tracking-widest block font-bold">Arena Leaderboard Elo</span>
+                        <div className="space-y-1">
+                          {comparedModels.map(m => (
+                            <div key={m.id} className="flex items-center justify-between text-[10px] font-mono">
+                              <span className="text-neutral-400 font-medium">{m.name}</span>
+                              <span className="text-emerald-400 font-bold">★ {arenaLeaderboard[m.id] || 300}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Arena Textarea Form */}
+                    <div className="space-y-2.5 pt-2">
+                      <textarea
+                        value={arenaPrompt}
+                        onChange={(e) => setArenaPrompt(e.target.value)}
+                        placeholder="Type a technical challenge, coding question, or comparative query..."
+                        className="w-full min-h-[80px] p-3.5 bg-neutral-950 border border-neutral-900 rounded-xl text-xs sm:text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-[#5194ec]/40 transition-all focus:ring-1 focus:ring-[#5194ec]/10 resize-none"
+                      />
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        {/* Quick Prompts */}
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { text: 'Design distributed Cache', query: 'Draft an architectural spec for a distributed cache with zero-trust encryption' },
+                            { text: 'Compare MoE latency', query: 'Analyze reasoning latency trade-offs between sparse Mixture-of-Experts and dense models' },
+                            { text: 'Hardware limits', query: 'Compare Blackwell GPU cluster bandwidth constraints under continuous training' }
+                          ].map((qp, i) => (
+                            <button
+                              key={i}
+                              onClick={() => {
+                                setArenaPrompt(qp.query);
+                                playChime(480, 0.05);
+                              }}
+                              className="px-2.5 py-1 rounded bg-[#0a0a0c] hover:bg-neutral-900 border border-neutral-900 hover:border-neutral-800 text-[9px] font-mono text-neutral-400 hover:text-neutral-200 transition-all cursor-pointer"
+                            >
+                              {qp.text}
+                            </button>
+                          ))}
+                        </div>
+
+                        <button
+                          onClick={handleArenaBattle}
+                          disabled={arenaLoading || !arenaPrompt.trim()}
+                          className={`px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-[#5194ec] hover:from-indigo-500 hover:to-blue-400 text-white text-[11px] font-bold tracking-wider uppercase flex items-center justify-center gap-1.5 transition-all shadow-lg active:scale-95 disabled:opacity-45 disabled:pointer-events-none cursor-pointer shrink-0`}
+                        >
+                          <Zap className={`w-3.5 h-3.5 ${arenaLoading ? 'animate-spin text-white' : 'text-indigo-200'}`} />
+                          <span>{arenaLoading ? 'Executing battle...' : 'Run Arena Battle'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Battle Screen Columns */}
+                  {Object.keys(arenaResults).length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {comparedModels.map(m => {
+                        const result = arenaResults[m.id];
+                        if (!result) return null;
+                        return (
+                          <div
+                            key={m.id}
+                            className={`bg-[#030304] border ${result.hasVoted ? 'border-emerald-500/30 ring-1 ring-emerald-500/10' : 'border-neutral-900'} rounded-2xl p-5 flex flex-col justify-between space-y-4 relative overflow-hidden transition-all`}
+                          >
+                            {/* Scanning overlay for loader */}
+                            {arenaLoading && result.response === 'Generating response...' && (
+                              <div className="absolute inset-0 bg-neutral-950/40 backdrop-blur-[1px] flex flex-col items-center justify-center space-y-2 z-10">
+                                <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" />
+                                <span className="text-[10px] font-mono text-neutral-500 animate-pulse uppercase">Compiling neural response...</span>
+                              </div>
+                            )}
+
+                            <div className="space-y-3">
+                              {/* Console Header */}
+                              <div className="flex items-center justify-between border-b border-neutral-900/60 pb-2.5">
+                                <div className="flex items-center gap-2">
+                                  <Cpu className="w-4 h-4 text-[#5194ec]" />
+                                  <div>
+                                    <h4 className="text-xs font-bold text-white leading-none">{m.name}</h4>
+                                    <span className="text-[8px] font-mono text-neutral-500 uppercase">{m.company}</span>
+                                  </div>
+                                </div>
+                                {result.timeMs > 0 && (
+                                  <div className="flex items-center gap-2.5 text-[9px] font-mono text-neutral-500">
+                                    <span>⏱ {result.timeMs}ms</span>
+                                    <span>⚡ {result.tokens} tokens</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Thought Block if DeepSeek / reasoning */}
+                              {result.thought && (
+                                <div className="bg-[#070709] border border-neutral-900/60 rounded-xl p-3.5 text-left space-y-1.5 font-mono text-[10px] text-neutral-400/80 leading-relaxed max-h-32 overflow-y-auto shadow-inner">
+                                  <div className="flex items-center gap-1 text-[8px] font-bold text-[#5194ec] uppercase">
+                                    <Sparkles className="w-3 h-3 animate-pulse" />
+                                    <span>REASONING TRACE</span>
+                                  </div>
+                                  <pre className="whitespace-pre-wrap font-mono font-normal">{result.thought}</pre>
+                                </div>
+                              )}
+
+                              {/* Core Response */}
+                              <div className="text-xs sm:text-sm text-neutral-300 font-sans leading-relaxed text-left space-y-2 whitespace-pre-wrap max-h-96 overflow-y-auto pr-1">
+                                {result.response === 'Generating response...' ? (
+                                  <div className="flex items-center gap-2 text-neutral-500 py-4 font-mono text-xs">
+                                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce delay-100" />
+                                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce delay-200" />
+                                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce delay-300" />
+                                    <span>Simulating output model stream...</span>
+                                  </div>
+                                ) : (
+                                  <div className="prose prose-invert max-w-none text-neutral-300 text-xs sm:text-sm space-y-2">
+                                    {result.response.split('\n').map((line, idx) => {
+                                      if (line.startsWith('###')) {
+                                        return <h4 key={idx} className="text-white font-bold text-xs sm:text-sm pt-2">{line.replace('###', '')}</h4>;
+                                      } else if (line.startsWith('*')) {
+                                        return <li key={idx} className="ml-3 text-neutral-300 list-disc">{line.replace('*', '')}</li>;
+                                      } else if (line.startsWith('```')) {
+                                        return null; // hide raw code blocks indicators for sleek look
+                                      }
+                                      return <p key={idx}>{line}</p>;
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Vote Row */}
+                            {result.response !== 'Generating response...' && (
+                              <div className="pt-3.5 border-t border-neutral-900/60 flex items-center justify-between">
+                                <span className="text-[9px] font-mono text-neutral-500 uppercase font-bold">ACKNOWLEDGE LOGIC</span>
+                                <button
+                                  onClick={() => handleArenaVote(m.id)}
+                                  disabled={result.hasVoted}
+                                  className={`px-3 py-1.5 rounded-lg text-[9px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all ${
+                                    result.hasVoted
+                                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                                      : 'bg-neutral-900 border border-neutral-850 text-neutral-300 hover:text-white hover:bg-neutral-850'
+                                  }`}
+                                >
+                                  {result.hasVoted ? '✓ Voted Winner' : '👍 Vote output as Superior'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
