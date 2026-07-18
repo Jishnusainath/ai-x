@@ -2,6 +2,51 @@
 
 const FALLBACK_NEWS = [
   {
+    title: "DeepMind Launches AlphaGeometry 3: Solving IMO Geometry Problems with Human-Level Elegance",
+    source: "Nature Computer Science",
+    summary: "Google DeepMind has released AlphaGeometry 3, which solves 100% of International Mathematical Olympiad geometry problems within a fraction of the time limit. The model integrates a neural reasoning loop with formal symbol-deduction engines, showcasing major steps toward general mathematical reasoning.",
+    date: "July 17, 2026",
+    category: "Applications",
+    sentiment: "positive",
+    url: "https://www.nature.com/articles/alphageometry-3"
+  },
+  {
+    title: "TSMC and NVIDIA Unveil Liquid-Cooled HBM4 Silicon Integration for Rubin Superclusters",
+    source: "Taiwan Semiconductor Times",
+    summary: "TSMC and NVIDIA announced a breakthrough in liquid-cooled CoWoS-L packaging, enabling high-performance HBM4 memory stacks to operate 30% cooler on Rubin GPU platforms. This technology solves critical thermal throttling issues in ultra-dense next-generation AI training clusters.",
+    date: "July 16, 2026",
+    category: "Hardware",
+    sentiment: "positive",
+    url: "https://www.tsmc.com/rubin-cooling"
+  },
+  {
+    title: "OpenAI Reveals 'Operator' Framework for Multi-Agent Task Execution in Browser Environments",
+    source: "OpenAI Press",
+    summary: "OpenAI has officially launched 'Operator' globally, a framework that empowers sovereign AI agents to execute multi-step workflows directly in web browsers. Powered by a specialized reasoning model, Operator can book travel, compile financial spreadsheets, and manage online tools with zero human intervention.",
+    date: "July 15, 2026",
+    category: "Models",
+    sentiment: "positive",
+    url: "https://openai.com/blog/operator"
+  },
+  {
+    title: "EU Commission Establishes Sandbox Exemption Rules for Open-Source Frontier Research",
+    source: "Financial Times",
+    summary: "In a crucial update to the EU AI Act, the European Commission announced a regulatory sandbox exemption framework for open-source research models. AI developers and academic institutions will receive structured testing environments with reduced compliance overhead to foster sovereign European AI development.",
+    date: "July 14, 2026",
+    category: "Regulation",
+    sentiment: "neutral",
+    url: "https://www.ft.com/eu-sandbox-exemption"
+  },
+  {
+    title: "Anthropic Claude 4.5 Sonnet Released with Full Local Code Sandbox Execution",
+    source: "Anthropic Research",
+    summary: "Anthropic has unveiled Claude 4.5 Sonnet, introducing full state-persisted coding capabilities with a secure, local Docker container sandbox integrated directly into the browser API. The model achieves unparalleled performance in system debugging and interactive code execution tests.",
+    date: "July 13, 2026",
+    category: "Models",
+    sentiment: "positive",
+    url: "https://www.anthropic.com/claude-4-5-sonnet"
+  },
+  {
     title: "Gemini 3.5 Ultra Unveiled: Redefining Multi-Modal Frontier Reasoning",
     source: "Google DeepMind Press",
     summary: "Google has announced its flagship Gemini 3.5 Ultra model, setting new benchmarks in multi-step coding, complex logic formulation, and native video-audio understanding. The model boasts a 2-million token context window as standard.",
