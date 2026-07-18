@@ -173,7 +173,7 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<React.ReactNode | null>(null);
   const [userNotes, setUserNotes] = useState<Record<string, string>>(() => {
     const saved = localStorage.getItem('aix-notes');
     return saved ? JSON.parse(saved) : {};
@@ -301,7 +301,7 @@ export default function App() {
       setAuthPassword("");
     } catch (err: any) {
       console.error("Auth error:", err);
-      let friendlyMessage = err.message || "An error occurred during authentication.";
+      let friendlyMessage: React.ReactNode = err.message || "An error occurred during authentication.";
       if (err.code === 'auth/wrong-password') {
         friendlyMessage = "Incorrect password. Please try again.";
       } else if (err.code === 'auth/user-not-found') {
@@ -312,6 +312,24 @@ export default function App() {
         friendlyMessage = "Password should be at least 6 characters.";
       } else if (err.code === 'auth/operation-not-allowed') {
         friendlyMessage = "Email/Password sign-in is disabled in your Firebase console. Please go to your Firebase Console under Authentication -> Sign-in method and enable the Email/Password provider.";
+      } else if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
+        friendlyMessage = (
+          <div className="space-y-2 text-left">
+            <p className="font-bold text-rose-300">Firebase Error: Unauthorized Domain</p>
+            <p className="text-[11px] leading-relaxed text-neutral-300">
+              Your deployed Vercel domain is not authorized in your Firebase project. To fix this:
+            </p>
+            <ol className="list-decimal pl-4 text-[10px] space-y-1 text-neutral-400 font-sans">
+              <li>Open your <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">Firebase Console</a></li>
+              <li>Go to <strong className="text-neutral-200">Authentication</strong> &rarr; <strong className="text-neutral-200">Settings</strong> tab</li>
+              <li>Under <strong className="text-neutral-200">Authorized domains</strong>, click <strong className="text-neutral-200">Add domain</strong></li>
+              <li>Add: <code className="bg-neutral-900 px-1 py-0.5 rounded text-rose-300 font-mono text-[10px] select-all border border-neutral-800">{window.location.hostname}</code></li>
+            </ol>
+            <p className="text-[10px] text-neutral-400 mt-1">
+              Once added, refresh your browser tab and try signing up/in again!
+            </p>
+          </div>
+        );
       }
       setAuthError(friendlyMessage);
     } finally {
@@ -328,9 +346,27 @@ export default function App() {
       setIsAuthModalOpen(false);
     } catch (err: any) {
       console.error("Guest login error:", err);
-      let friendlyMessage = err.message || "Failed to sign in as guest.";
+      let friendlyMessage: React.ReactNode = err.message || "Failed to sign in as guest.";
       if (err.code === 'auth/operation-not-allowed') {
         friendlyMessage = "Anonymous guest sign-in is disabled in your Firebase console. Please go to your Firebase Console under Authentication -> Sign-in method and enable the Anonymous provider.";
+      } else if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
+        friendlyMessage = (
+          <div className="space-y-2 text-left">
+            <p className="font-bold text-rose-300">Firebase Error: Unauthorized Domain</p>
+            <p className="text-[11px] leading-relaxed text-neutral-300">
+              Your deployed Vercel domain is not authorized in your Firebase project. To fix this:
+            </p>
+            <ol className="list-decimal pl-4 text-[10px] space-y-1 text-neutral-400 font-sans">
+              <li>Open your <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">Firebase Console</a></li>
+              <li>Go to <strong className="text-neutral-200">Authentication</strong> &rarr; <strong className="text-neutral-200">Settings</strong> tab</li>
+              <li>Under <strong className="text-neutral-200">Authorized domains</strong>, click <strong className="text-neutral-200">Add domain</strong></li>
+              <li>Add: <code className="bg-neutral-900 px-1 py-0.5 rounded text-rose-300 font-mono text-[10px] select-all border border-neutral-800">{window.location.hostname}</code></li>
+            </ol>
+            <p className="text-[10px] text-neutral-400 mt-1">
+              Once added, refresh your browser tab and try signing up/in again!
+            </p>
+          </div>
+        );
       }
       setAuthError(friendlyMessage);
     } finally {
@@ -350,6 +386,24 @@ export default function App() {
       console.error("Google login error:", err);
       if (err.code === 'auth/popup-blocked') {
         setAuthError("Sign-in popup was blocked by your browser. Please allow popups for this site and try again.");
+      } else if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
+        setAuthError(
+          <div className="space-y-2 text-left">
+            <p className="font-bold text-rose-300">Firebase Error: Unauthorized Domain</p>
+            <p className="text-[11px] leading-relaxed text-neutral-300">
+              Your deployed Vercel domain is not authorized in your Firebase project. To fix this:
+            </p>
+            <ol className="list-decimal pl-4 text-[10px] space-y-1 text-neutral-400 font-sans">
+              <li>Open your <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">Firebase Console</a></li>
+              <li>Go to <strong className="text-neutral-200">Authentication</strong> &rarr; <strong className="text-neutral-200">Settings</strong> tab</li>
+              <li>Under <strong className="text-neutral-200">Authorized domains</strong>, click <strong className="text-neutral-200">Add domain</strong></li>
+              <li>Add: <code className="bg-neutral-900 px-1 py-0.5 rounded text-rose-300 font-mono text-[10px] select-all border border-neutral-800">{window.location.hostname}</code></li>
+            </ol>
+            <p className="text-[10px] text-neutral-400 mt-1">
+              Once added, refresh your browser tab and try Google Sign-In again!
+            </p>
+          </div>
+        );
       } else {
         setAuthError(err.message || "Failed to sign in with Google.");
       }
