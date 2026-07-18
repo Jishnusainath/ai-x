@@ -1,0 +1,6 @@
+{
+  "name": "AI X",
+  "description": "A fully functional full-stack application for AI X, tracking, summarizing, and displaying live AI news powered by Gemini Search Grounding.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
