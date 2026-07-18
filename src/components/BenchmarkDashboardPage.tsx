@@ -13,6 +13,7 @@ import {
   AreaChart, Area 
 } from 'recharts';
 import { MODELS_INTEL, ModelProfile, ModelBenchmarks } from '../data/models';
+import { db, doc, getDoc, setDoc, collection, addDoc } from '../lib/firebase';
 
 interface BenchmarkDashboardPageProps {
   onBack: () => void;
@@ -60,6 +61,15 @@ export default function BenchmarkDashboardPage({
   const [arenaLeaderboard, setArenaLeaderboard] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('aix_arena_leaderboard');
     return saved ? JSON.parse(saved) : { 'gpt-5': 420, 'claude-4': 415, 'deepseek-r1': 398, 'gemini-3.5-flash': 310, 'llama-4': 295 };
+  });
+
+  // Customizable Weights for overall score computation (Startup premium custom weighting system)
+  const [metricWeights, setMetricWeights] = useState<Record<string, number>>({
+    reasoning: 20,
+    coding: 20,
+    math: 20,
+    vision: 20,
+    agentTasks: 20
   });
   
   // Timeframes for historical plot
@@ -157,6 +167,32 @@ export default function BenchmarkDashboardPage({
     }, 45000);
 
     return () => clearInterval(interval);
+  }, []);
+
+  // Sync Chat Arena Leaderboard with live global Firestore stats on mount
+  useEffect(() => {
+    const fetchGlobalArenaLeaderboard = async () => {
+      try {
+        const statsRef = doc(db, 'arena_stats', 'global');
+        const docSnap = await getDoc(statsRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setArenaLeaderboard(prev => ({
+            ...prev,
+            ...data
+          }));
+        } else {
+          // Self-initialize live global document with original starter scores
+          const defaultScores = { 'gpt-5': 420, 'claude-4': 415, 'deepseek-r1': 398, 'gemini-3.5-flash': 310, 'llama-4': 295 };
+          await setDoc(statsRef, defaultScores);
+          setArenaLeaderboard(defaultScores);
+        }
+      } catch (err) {
+        console.warn("Could not retrieve global arena scoreboard. Defaulting to local storage cache.", err);
+      }
+    };
+
+    fetchGlobalArenaLeaderboard();
   }, []);
 
   // Sync / reload handler
@@ -264,10 +300,18 @@ export default function BenchmarkDashboardPage({
     return name.replace(/\s+/g, '-');
   };
 
-  // Dynamic Overall score compiler (averaging active metrics weights)
+  // Dynamic Overall score compiler (averaging active metrics weights or dynamic custom weightings)
   const getOverallScore = (model: ModelProfile) => {
     const b = model.benchmarks;
-    return Math.round(((b.reasoning + b.coding + b.math + b.vision + b.agentTasks) / 5) * 10) / 10;
+    const totalWeight = metricWeights.reasoning + metricWeights.coding + metricWeights.math + metricWeights.vision + metricWeights.agentTasks;
+    if (totalWeight === 0) return 0;
+    const weightedSum = 
+      (b.reasoning * metricWeights.reasoning) +
+      (b.coding * metricWeights.coding) +
+      (b.math * metricWeights.math) +
+      (b.vision * metricWeights.vision) +
+      (b.agentTasks * metricWeights.agentTasks);
+    return Math.round((weightedSum / totalWeight) * 10) / 10;
   };
 
   // Unique companies list
@@ -649,10 +693,12 @@ GPT-5 Sovereign achieves a high level of operational reliability and enterprise 
   };
 
   // Register Arena Vote
-  const handleArenaVote = (modelId: string) => {
+  const handleArenaVote = async (modelId: string) => {
+    let updatedLeaderboard: Record<string, number> = {};
     setArenaLeaderboard(prev => {
       const updated = { ...prev, [modelId]: (prev[modelId] || 0) + 1 };
       localStorage.setItem('aix_arena_leaderboard', JSON.stringify(updated));
+      updatedLeaderboard = updated;
       return updated;
     });
 
@@ -667,6 +713,22 @@ GPT-5 Sovereign achieves a high level of operational reliability and enterprise 
     const winningModel = MODELS_INTEL[modelId];
     triggerToast(`Vote registered! ${winningModel?.name || modelId} Arena Score incremented.`);
     playChime(950, 0.2, 'sine');
+
+    try {
+      // Create an audit trail of individual votes casted
+      await addDoc(collection(db, 'arena_votes'), {
+        votedModelId: modelId,
+        winningModelName: winningModel?.name || modelId,
+        prompt: arenaPrompt,
+        timestamp: Date.now()
+      });
+
+      // Update aggregate global ratings
+      const statsRef = doc(db, 'arena_stats', 'global');
+      await setDoc(statsRef, { [modelId]: (updatedLeaderboard[modelId] || 300) }, { merge: true });
+    } catch (err) {
+      console.error("Error logging global arena vote to Firestore:", err);
+    }
   };
 
   // Saved Comparisons (Workspace integration)
@@ -2040,6 +2102,72 @@ GPT-5 Sovereign achieves a high level of operational reliability and enterprise 
             </div>
           </div>
         </section>
+
+        {/* Dynamic Benchmark Score Configurator Panel */}
+        <div className="bg-[#050507] border border-neutral-900 rounded-[22px] p-5 space-y-4 text-left">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-900 pb-3">
+            <div className="space-y-0.5">
+              <h4 className="text-xs font-semibold text-white tracking-tight flex items-center gap-2">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-purple-400" />
+                Custom Rank Weightings Configurator
+              </h4>
+              <p className="text-[10px] text-neutral-500">
+                Slide to adjust the importance of each metric. The Leaderboard rankings will dynamically recompute and sort on the fly based on your customized formula.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setMetricWeights({ reasoning: 20, coding: 20, math: 20, vision: 20, agentTasks: 20 });
+                triggerToast('Rank weightings reset to equal split (20% each)');
+                playChime(400, 0.08);
+              }}
+              className="text-[9px] font-mono text-purple-400 hover:text-purple-300 underline cursor-pointer"
+            >
+              Reset to equal weights (20% each)
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-5">
+            {[
+              { key: 'reasoning', label: 'Reasoning (MMLU)' },
+              { key: 'coding', label: 'Coding (HumanEval)' },
+              { key: 'math', label: 'Math (GSM8K/MATH)' },
+              { key: 'vision', label: 'Vision (MMMU)' },
+              { key: 'agentTasks', label: 'Agentic Tasks' }
+            ].map(item => {
+              const value = metricWeights[item.key];
+              const total = Object.values(metricWeights).reduce((a, b) => a + b, 0);
+              const percent = total > 0 ? Math.round((value / total) * 100) : 0;
+              
+              return (
+                <div key={item.key} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono text-neutral-400 font-medium">{item.label}</span>
+                    <span className="text-[10px] font-mono text-white font-bold bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
+                      {value} ({percent}%)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="100" 
+                      value={value}
+                      onChange={(e) => {
+                        setMetricWeights(prev => ({
+                          ...prev,
+                          [item.key]: Number(e.target.value)
+                        }));
+                        playChime(500 + value * 2, 0.03);
+                      }}
+                      className="w-full accent-[#5194ec] h-1 bg-neutral-950 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         {/* INTERACTIVE MODEL LEADERBOARD TABLE */}
         <section className="space-y-4 text-left">
